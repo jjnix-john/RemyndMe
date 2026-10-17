@@ -8,7 +8,7 @@ import * as db from '../lib/db';
 import { buildBriefing, speakBriefing, stopSpeaking } from '../lib/briefing';
 import { snoozeTask } from '../lib/alarms';
 import { stopAlarm } from '../lib/alarmEvents';
-import { colors, gradients, radius } from '../lib/theme';
+import { colors, gradients, radius, shadows } from '../lib/theme';
 
 /** Full-screen ring UI opened by tapping (or full-screen-intent launching from) an alarm notification. */
 export default function AlarmScreen() {
@@ -43,31 +43,44 @@ export default function AlarmScreen() {
   }
 
   return (
-    <LinearGradient colors={['#1B0F2E', '#0B0B14']} style={styles.flex}>
+    <LinearGradient colors={['#F0FDF4', '#DCFCE7', '#FFFFFF']} style={styles.flex}>
       <SafeAreaView style={styles.flex}>
         <View style={styles.center}>
-          <LinearGradient colors={gradients.alarm} style={styles.ring}>
-            <Ionicons name="alarm" size={56} color="#fff" />
+          <LinearGradient
+            colors={gradients.primary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.ring, shadows.floating]}
+          >
+            <Ionicons name="alarm" size={54} color="#fff" />
           </LinearGradient>
+
           <Text style={styles.time}>{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text>
-          <Text style={styles.title}>{briefing?.anchorTask?.title || 'Your tasks'}</Text>
-          <Text style={styles.script}>{briefing?.text || 'Preparing your briefing…'}</Text>
+          <Text style={styles.title}>{briefing?.anchorTask?.title || 'Mindful Wakeup'}</Text>
+          <Text style={styles.script}>{briefing?.text || 'Preparing your peaceful briefing…'}</Text>
 
           <Pressable onPress={() => speakBriefing(taskId, { repeat: 1 })} style={styles.replay}>
-            <Ionicons name="volume-high" size={18} color={colors.primary} />
-            <Text style={styles.replayText}>Read again</Text>
+            <Ionicons name="volume-high" size={18} color={colors.primaryDark} />
+            <Text style={styles.replayText}>Read briefing again</Text>
           </Pressable>
         </View>
 
         <View style={styles.buttons}>
-          <Pressable onPress={snooze} style={[styles.btn, { backgroundColor: colors.card }]}>
-            <Text style={styles.btnText}>Snooze 10m</Text>
+          <Pressable onPress={snooze} style={[styles.btn, styles.secondaryBtn, shadows.card]}>
+            <Text style={styles.secondaryBtnText}>Snooze 10m</Text>
           </Pressable>
-          <Pressable onPress={markDone} style={[styles.btn, { backgroundColor: colors.card }]}>
-            <Text style={styles.btnText}>Done</Text>
+          <Pressable onPress={markDone} style={[styles.btn, styles.secondaryBtn, shadows.card]}>
+            <Text style={styles.secondaryBtnText}>Done</Text>
           </Pressable>
           <Pressable onPress={dismiss} style={{ flex: 1 }}>
-            <LinearGradient colors={gradients.alarm} style={styles.btn}><Text style={[styles.btnText, { color: '#fff' }]}>Dismiss</Text></LinearGradient>
+            <LinearGradient
+              colors={gradients.primary}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.btn, shadows.floating]}
+            >
+              <Text style={[styles.btnText, { color: '#fff' }]}>Dismiss</Text>
+            </LinearGradient>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -78,13 +91,27 @@ export default function AlarmScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  ring: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center' },
-  time: { color: colors.text, fontSize: 56, fontWeight: '200', marginTop: 24 },
-  title: { color: colors.text, fontSize: 24, fontWeight: '800', textAlign: 'center', marginTop: 6 },
-  script: { color: colors.muted, textAlign: 'center', marginTop: 16, lineHeight: 22, fontSize: 15 },
-  replay: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 22, backgroundColor: colors.primarySoft, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
-  replayText: { color: colors.primary, fontWeight: '700' },
+  ring: { width: 110, height: 110, borderRadius: 55, alignItems: 'center', justifyContent: 'center' },
+  time: { color: colors.text, fontSize: 52, fontWeight: '200', marginTop: 24 },
+  title: { color: colors.text, fontSize: 24, fontWeight: '800', textAlign: 'center', marginTop: 8 },
+  script: { color: colors.textSecondary, textAlign: 'center', marginTop: 14, lineHeight: 22, fontSize: 15 },
+  replay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 22,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: radius.full,
+    ...shadows.card,
+  },
+  replayText: { color: colors.primaryDark, fontWeight: '700' },
   buttons: { flexDirection: 'row', gap: 10, padding: 20 },
   btn: { paddingVertical: 16, paddingHorizontal: 16, borderRadius: radius.md, alignItems: 'center' },
-  btnText: { color: colors.text, fontWeight: '700', fontSize: 15 },
+  secondaryBtn: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: colors.border },
+  secondaryBtnText: { color: colors.text, fontWeight: '700', fontSize: 15 },
+  btnText: { fontWeight: '700', fontSize: 15 },
 });

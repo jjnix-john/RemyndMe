@@ -4,9 +4,12 @@
   "private": true,
   "main": "index.js",
   "scripts": {
+    "start": "npx expo start --go",
+    "expo": "npx expo start --go",
+    "expo:tunnel": "npx expo start --go --tunnel",
+    "expo:dev": "npx expo start --dev-client",
     "server": "node server.js",
-    "expo": "npx expo start",
-    "start": "concurrently -k -n server,expo -c cyan,magenta \"npm:server\" \"npm:expo\"",
+    "start:all": "concurrently -k -n server,expo -c cyan,magenta \"npm:server\" \"npm:expo\"",
     "android": "npx expo run:android",
     "ios": "npx expo run:ios",
     "prebuild": "npx expo prebuild"

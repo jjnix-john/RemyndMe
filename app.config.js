@@ -2,6 +2,19 @@
 // NOTE: GROQ_API_KEY and GEMINI_API_KEY are server-only and are NEVER exposed here.
 require('dotenv').config();
 
+const plugins = [
+  'expo-router',
+  'expo-sqlite',
+  'expo-asset',
+  'expo-font',
+  ['expo-av', { microphonePermission: 'RemyndMe records your voice to create notes and tasks.' }],
+];
+
+// Include expo-dev-client plugin only when building or running custom dev client
+if (process.env.EXPO_USE_DEV_CLIENT) {
+  plugins.push('expo-dev-client');
+}
+
 module.exports = {
   expo: {
     name: 'RemyndMe',
@@ -9,8 +22,9 @@ module.exports = {
     scheme: 'remyndme',
     version: '1.0.0',
     orientation: 'portrait',
-    userInterfaceStyle: 'dark',
-    backgroundColor: '#0B0B14',
+    platforms: ['ios', 'android'],
+    userInterfaceStyle: 'light',
+    backgroundColor: '#F4F9F5',
     android: {
       package: 'com.remyndme.app',
       permissions: [
@@ -33,17 +47,10 @@ module.exports = {
         UIBackgroundModes: ['audio'],
       },
     },
-    plugins: [
-      'expo-router',
-      'expo-sqlite',
-      'expo-dev-client',
-      'expo-asset',
-      'expo-font',
-      ['expo-av', { microphonePermission: 'RemyndMe records your voice to create notes and tasks.' }],
-    ],
+    plugins,
     extra: {
-      supabaseUrl: process.env.SUPABASE_URL,
-      supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+      supabaseUrl: process.env.SUPABASE_URL || null,
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY || null,
       apiUrl: process.env.API_URL || null,
       apiPort: process.env.PORT || '4000',
     },

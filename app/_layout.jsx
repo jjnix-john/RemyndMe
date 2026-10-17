@@ -4,7 +4,7 @@ import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-rout
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import notifee from '@notifee/react-native';
+import notifee from '../lib/notifee';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { colors } from '../lib/theme';
 import { syncAll } from '../lib/sync';
@@ -66,7 +66,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <AuthProvider>
           <RootNav />
         </AuthProvider>

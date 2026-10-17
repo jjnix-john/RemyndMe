@@ -35,6 +35,10 @@ async function requireUser(req, res, next) {
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Missing bearer token' });
 
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL.startsWith('your_')) {
+      return res.status(503).json({ error: 'Supabase credentials not configured in .env on server' });
+    }
+
     const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false, autoRefreshToken: false },

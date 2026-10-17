@@ -10,19 +10,19 @@ import { useAuth } from '../../lib/auth';
 import * as db from '../../lib/db';
 import { syncAll } from '../../lib/sync';
 import { useRecorder } from '../../lib/useRecorder';
-import { colors, gradients, radius } from '../../lib/theme';
+import { colors, gradients, radius, shadows } from '../../lib/theme';
 
 const fmt = (iso) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 const deriveTitle = (text) => {
   const t = text.trim().replace(/\s+/g, ' ');
-  return t.length > 40 ? `${t.slice(0, 40)}…` : t || 'Untitled';
+  return t.length > 40 ? `${t.slice(0, 40)}…` : t || 'Untitled Note';
 };
 
 export default function NotesScreen() {
-  const { user, signOut } = useAuth();
+  const { user, isGuest, signOut } = useAuth();
   const [notes, setNotes] = useState([]);
   const [query, setQuery] = useState('');
-  const [editing, setEditing] = useState(null); // note being edited
+  const [editing, setEditing] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const rec = useRecorder();
 
@@ -35,7 +35,7 @@ export default function NotesScreen() {
   }, [notes, query]);
 
   const newNote = () =>
-    setEditing({ id: Crypto.randomUUID(), user_id: user.id, title: '', content: '', created_at: new Date().toISOString(), isNew: true });
+    setEditing({ id: Crypto.randomUUID(), user_id: user?.id || 'guest-explorer', title: '', content: '', created_at: new Date().toISOString(), isNew: true });
 
   async function persist(note) {
     const body = (note.content || '').trim();
@@ -49,7 +49,13 @@ export default function NotesScreen() {
     if (rec.isRecording) {
       const text = await rec.stop();
       if (!text) return;
-      const note = { id: Crypto.randomUUID(), user_id: user.id, title: deriveTitle(text), content: text, created_at: new Date().toISOString() };
+      const note = {
+        id: Crypto.randomUUID(),
+        user_id: user?.id || 'guest-explorer',
+        title: deriveTitle(text),
+        content: text,
+        created_at: new Date().toISOString(),
+      };
       await persist(note);
     } else {
       await rec.start();
@@ -64,69 +70,182 @@ export default function NotesScreen() {
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
+      {/* Mindful Header with breezy vibes */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.h1}>Notepad</Text>
-          <Text style={styles.subtle}>{notes.length} {notes.length === 1 ? 'note' : 'notes'}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.leafIcon}>🍃</Text>
+            <Text style={styles.h1}>Notes</Text>
+          </View>
+          <Text style={styles.subtle}>
+            {notes.length} {notes.length === 1 ? 'peaceful thought' : 'peaceful thoughts'} saved
+          </Text>
         </View>
-        <Pressable onPress={() => Alert.alert('Sign out', user?.email, [{ text: 'Cancel' }, { text: 'Sign out', style: 'destructive', onPress: signOut }])}>
-          <Ionicons name="person-circle-outline" size={32} color={colors.muted} />
-        </Pressable>
+
+        <View style={styles.headerRight}>
+          {isGuest && (
+            <View style={styles.guestBadge}>
+              <Text style={styles.guestText}>🌿 Guest Mode</Text>
+            </View>
+          )}
+          <Pressable
+            onPress={() =>
+              Alert.alert(
+                isGuest ? 'Guest Preview Mode' : 'Account Details',
+                isGuest
+                  ? 'You are running in breezy demo mode. All notes are saved safely in your local device cache.'
+                  : `Signed in as ${user?.email}`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: isGuest ? 'Exit Demo' : 'Sign out', style: 'destructive', onPress: signOut },
+                ]
+              )
+            }
+            hitSlop={10}
+          >
+            <View style={styles.avatar}>
+              <Ionicons name="leaf-outline" size={20} color={colors.primaryDark} />
+            </View>
+          </Pressable>
+        </View>
       </View>
 
+      {/* Floating Zen Pill Banner */}
+      <View style={styles.zenPill}>
+        <LinearGradient
+          colors={gradients.breezyPill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.zenGradient}
+        >
+          <Ionicons name="sparkles" size={15} color={colors.primaryDark} />
+          <Text style={styles.zenText}>Breathe deep & capture your floating ideas</Text>
+        </LinearGradient>
+      </View>
+
+      {/* Floating Search Bar */}
       <View style={styles.search}>
         <Ionicons name="search" size={18} color={colors.muted} />
-        <TextInput style={styles.searchInput} placeholder="Search notes" placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search your notes & reflections…"
+          placeholderTextColor={colors.muted}
+          value={query}
+          onChangeText={setQuery}
+        />
+        {!!query && (
+          <Pressable onPress={() => setQuery('')}>
+            <Ionicons name="close-circle" size={18} color={colors.muted} />
+          </Pressable>
+        )}
       </View>
 
+      {/* Note Cards List */}
       <FlatList
         data={filtered}
         keyExtractor={(n) => n.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 140, gap: 12 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 150, gap: 14 }}
         refreshing={refreshing}
         onRefresh={refresh}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="create-outline" size={48} color={colors.border} />
-            <Text style={styles.emptyText}>No notes yet. Type one, or tap the mic and just talk.</Text>
+            <View style={styles.emptyIconBg}>
+              <Ionicons name="leaf-outline" size={44} color={colors.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>Clear, serene canvas</Text>
+            <Text style={styles.emptyText}>
+              No notes found. Tap the plus button to jot down a gentle reflection, or tap the mic to speak freely.
+            </Text>
           </View>
         }
         renderItem={({ item }) => (
           <Pressable style={styles.card} onPress={() => setEditing(item)}>
-            <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-            {!!item.content && <Text style={styles.cardBody} numberOfLines={3}>{item.content}</Text>}
-            <Text style={styles.cardDate}>{fmt(item.created_at)}</Text>
+            <View style={styles.cardTop}>
+              <View style={styles.cardIndicator} />
+              <Text style={styles.cardTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+            </View>
+            {!!item.content && (
+              <Text style={styles.cardBody} numberOfLines={3}>
+                {item.content}
+              </Text>
+            )}
+            <View style={styles.cardFooter}>
+              <View style={styles.cardTag}>
+                <Text style={styles.cardTagText}>🌱 Note</Text>
+              </View>
+              <Text style={styles.cardDate}>{fmt(item.created_at)}</Text>
+            </View>
           </Pressable>
         )}
       />
 
+      {/* Recording status banner */}
       {(rec.isRecording || rec.isTranscribing) && (
         <View style={styles.recBanner}>
-          {rec.isTranscribing ? <ActivityIndicator color="#fff" /> : <View style={styles.dot} />}
+          {rec.isTranscribing ? (
+            <ActivityIndicator color={colors.primaryDark} size="small" />
+          ) : (
+            <View style={styles.dot} />
+          )}
           <Text style={styles.recText}>
-            {rec.isTranscribing ? 'Transcribing with Whisper…' : `Recording ${String(Math.floor(rec.seconds / 60)).padStart(2, '0')}:${String(rec.seconds % 60).padStart(2, '0')} — tap mic to finish`}
+            {rec.isTranscribing
+              ? 'Processing voice note…'
+              : `Listening gently ${String(Math.floor(rec.seconds / 60)).padStart(2, '0')}:${String(rec.seconds % 60).padStart(2, '0')} — tap mic to finish`}
           </Text>
         </View>
       )}
 
+      {/* Floating Action Buttons */}
       <View style={styles.fabs}>
-        <Pressable onPress={voiceNote} disabled={rec.isTranscribing} testID="voice-note-fab">
-          <LinearGradient colors={rec.isRecording ? gradients.alarm : [colors.card, colors.card]} style={[styles.fabSm, { borderWidth: 1, borderColor: colors.border }]}>
-            <Ionicons name={rec.isRecording ? 'stop' : 'mic'} size={24} color={rec.isRecording ? '#fff' : colors.primary} />
+        <Pressable
+          onPress={voiceNote}
+          disabled={rec.isTranscribing}
+          testID="voice-note-fab"
+          style={({ pressed }) => [{ opacity: pressed ? 0.88 : 1 }]}
+        >
+          <LinearGradient
+            colors={rec.isRecording ? gradients.alarm : ['#FFFFFF', '#F0FDF4']}
+            style={[styles.fabSm, shadows.floating]}
+          >
+            <Ionicons
+              name={rec.isRecording ? 'stop' : 'mic'}
+              size={22}
+              color={rec.isRecording ? '#fff' : colors.primaryDark}
+            />
           </LinearGradient>
         </Pressable>
-        <Pressable onPress={newNote} testID="new-note-fab">
-          <LinearGradient colors={gradients.primary} style={styles.fab}>
+
+        <Pressable
+          onPress={newNote}
+          testID="new-note-fab"
+          style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
+        >
+          <LinearGradient
+            colors={gradients.primary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.fab, shadows.floating]}
+          >
             <Ionicons name="add" size={32} color="#fff" />
           </LinearGradient>
         </Pressable>
       </View>
 
+      {/* Note Editor Modal */}
       {editing && (
         <NoteEditor
           note={editing}
-          onClose={async (note) => { await persist(note); setEditing(null); }}
-          onDelete={async (id) => { await db.removeNote(id); syncAll(); setEditing(null); }}
+          onClose={async (note) => {
+            await persist(note);
+            setEditing(null);
+          }}
+          onDelete={async (id) => {
+            await db.removeNote(id);
+            syncAll();
+            setEditing(null);
+          }}
         />
       )}
     </SafeAreaView>
@@ -142,7 +261,7 @@ function NoteEditor({ note, onClose, onDelete }) {
   async function toggleMic() {
     if (rec.isRecording) {
       const text = await rec.stop();
-      if (text) setContent((c) => (c ? `${c.replace(/\s+$/, '')} ${text}` : text));
+      if (text) setContent((c) => (c ? `${c.replace(/\s+$/, '')}\n${text}` : text));
     } else {
       await rec.start();
     }
@@ -154,28 +273,73 @@ function NoteEditor({ note, onClose, onDelete }) {
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.editorBar}>
             <Pressable onPress={() => onClose(current)} hitSlop={12} testID="editor-close">
-              <Ionicons name="chevron-down" size={28} color={colors.text} />
+              <View style={styles.iconCircle}>
+                <Ionicons name="chevron-down" size={24} color={colors.text} />
+              </View>
             </Pressable>
-            <Text style={styles.editorStatus}>
-              {rec.isTranscribing ? 'Transcribing…' : rec.isRecording ? `● Recording ${rec.seconds}s` : note.isNew ? 'New note' : 'Edit note'}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 18 }}>
+            <View style={styles.editorStatusPill}>
+              <Text style={styles.editorStatus}>
+                {rec.isTranscribing
+                  ? 'Transcribing…'
+                  : rec.isRecording
+                  ? `● Listening ${rec.seconds}s`
+                  : note.isNew
+                  ? '🌿 Fresh Note'
+                  : '🌿 Editing Note'}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
               {!note.isNew && (
-                <Pressable onPress={() => Alert.alert('Delete note?', undefined, [{ text: 'Cancel' }, { text: 'Delete', style: 'destructive', onPress: () => onDelete(note.id) }])}>
-                  <Ionicons name="trash-outline" size={24} color={colors.danger} />
+                <Pressable
+                  onPress={() =>
+                    Alert.alert('Delete note?', 'This will permanently remove this note.', [
+                      { text: 'Cancel' },
+                      { text: 'Delete', style: 'destructive', onPress: () => onDelete(note.id) },
+                    ])
+                  }
+                >
+                  <View style={[styles.iconCircle, { borderColor: '#FEE2E2' }]}>
+                    <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                  </View>
                 </Pressable>
               )}
               <Pressable onPress={toggleMic} disabled={rec.isTranscribing} testID="editor-mic">
-                {rec.isTranscribing ? <ActivityIndicator color={colors.primary} /> : (
-                  <Ionicons name={rec.isRecording ? 'stop-circle' : 'mic-circle'} size={30} color={rec.isRecording ? colors.danger : colors.primary} style={{ marginTop: -3 }} />
-                )}
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: rec.isRecording ? '#FEE2E2' : colors.primarySoft },
+                  ]}
+                >
+                  {rec.isTranscribing ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons
+                      name={rec.isRecording ? 'stop-circle' : 'mic'}
+                      size={22}
+                      color={rec.isRecording ? colors.danger : colors.primaryDark}
+                    />
+                  )}
+                </View>
               </Pressable>
             </View>
           </View>
-          <TextInput style={styles.titleInput} placeholder="Title" placeholderTextColor={colors.muted} value={title} onChangeText={setTitle} />
+
           <TextInput
-            style={styles.bodyInput} placeholder="Start typing, or tap the mic to dictate…" placeholderTextColor={colors.muted}
-            multiline textAlignVertical="top" value={content} onChangeText={setContent} autoFocus={note.isNew}
+            style={styles.titleInput}
+            placeholder="Note title…"
+            placeholderTextColor={colors.subtle}
+            value={title}
+            onChangeText={setTitle}
+          />
+          <TextInput
+            style={styles.bodyInput}
+            placeholder="Let your thoughts flow freely, or tap the mic to speak…"
+            placeholderTextColor={colors.subtle}
+            multiline
+            textAlignVertical="top"
+            value={content}
+            onChangeText={setContent}
+            autoFocus={note.isNew}
           />
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -185,31 +349,192 @@ function NoteEditor({ note, onClose, onDelete }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8 },
-  h1: { color: colors.text, fontSize: 30, fontWeight: '800', letterSpacing: -0.5 },
-  subtle: { color: colors.muted, marginTop: 2 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  leafIcon: { fontSize: 24 },
+  h1: { color: colors.text, fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
+  subtle: { color: colors.muted, marginTop: 2, fontSize: 13, fontWeight: '500' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  guestBadge: {
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  guestText: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card,
+  },
+  zenPill: {
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
+  zenGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  zenText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   search: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: radius.md,
-    marginHorizontal: 16, marginTop: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.md,
+    marginHorizontal: 20,
+    marginTop: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
   },
   searchInput: { flex: 1, color: colors.text, paddingVertical: 12, fontSize: 15 },
-  card: { backgroundColor: colors.card, borderRadius: radius.md, padding: 16, borderWidth: 1, borderColor: colors.border },
-  cardTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  cardBody: { color: colors.muted, marginTop: 6, lineHeight: 20 },
-  cardDate: { color: colors.primary, fontSize: 12, marginTop: 10, fontWeight: '600' },
-  empty: { alignItems: 'center', marginTop: 90, paddingHorizontal: 40, gap: 12 },
-  emptyText: { color: colors.muted, textAlign: 'center', lineHeight: 21 },
-  fabs: { position: 'absolute', right: 20, bottom: 24, alignItems: 'center', gap: 14 },
-  fab: { width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center', elevation: 8 },
-  fabSm: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', elevation: 4 },
-  recBanner: {
-    position: 'absolute', left: 16, right: 100, bottom: 30, flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.card, borderRadius: radius.md, padding: 14, borderWidth: 1, borderColor: colors.border,
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    ...shadows.card,
   },
-  recText: { color: colors.text, flex: 1, fontSize: 13 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cardIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  cardTitle: { color: colors.text, fontSize: 18, fontWeight: '700', flex: 1 },
+  cardBody: { color: colors.textSecondary, marginTop: 8, lineHeight: 22, fontSize: 14 },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  cardTag: {
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.xs,
+  },
+  cardTagText: { color: colors.primaryDark, fontSize: 11, fontWeight: '600' },
+  cardDate: { color: colors.muted, fontSize: 12, fontWeight: '500' },
+  empty: { alignItems: 'center', marginTop: 80, paddingHorizontal: 36, gap: 12 },
+  emptyIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  emptyTitle: { color: colors.text, fontSize: 19, fontWeight: '700' },
+  emptyText: { color: colors.muted, textAlign: 'center', lineHeight: 22, fontSize: 14 },
+  fabs: { position: 'absolute', right: 20, bottom: 26, alignItems: 'center', gap: 14 },
+  fab: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabSm: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  recBanner: {
+    position: 'absolute',
+    left: 20,
+    right: 90,
+    bottom: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.full,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.floating,
+  },
+  recText: { color: colors.text, flex: 1, fontSize: 12, fontWeight: '600' },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger },
-  editorBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12 },
-  editorStatus: { color: colors.muted, fontWeight: '600' },
-  titleInput: { color: colors.text, fontSize: 26, fontWeight: '800', paddingHorizontal: 20, paddingVertical: 8 },
-  bodyInput: { flex: 1, color: colors.text, fontSize: 17, lineHeight: 26, paddingHorizontal: 20, paddingTop: 8 },
+  editorBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editorStatusPill: {
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+  },
+  editorStatus: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
+  titleInput: {
+    color: colors.text,
+    fontSize: 26,
+    fontWeight: '800',
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+  },
+  bodyInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 17,
+    lineHeight: 28,
+    paddingHorizontal: 22,
+    paddingTop: 8,
+  },
 });
