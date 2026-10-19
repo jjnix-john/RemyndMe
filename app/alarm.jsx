@@ -15,11 +15,26 @@ export default function AlarmScreen() {
   const { taskId } = useLocalSearchParams();
   const router = useRouter();
   const [briefing, setBriefing] = useState(null);
+  const [now, setNow] = useState(new Date());
+
+  // Live ticking clock
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    buildBriefing(taskId).then((b) => alive && setBriefing(b));
-    return () => { alive = false; };
+    buildBriefing(taskId).then((b) => {
+      if (alive) {
+        setBriefing(b);
+        speakBriefing(taskId, { repeat: 1 }).catch(() => {});
+      }
+    });
+    return () => {
+      alive = false;
+      stopSpeaking();
+    };
   }, [taskId]);
 
   const close = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/tasks'));
@@ -45,6 +60,18 @@ export default function AlarmScreen() {
   return (
     <LinearGradient colors={['#F0FDF4', '#DCFCE7', '#FFFFFF']} style={styles.flex}>
       <SafeAreaView style={styles.flex}>
+        {/* Top close bar */}
+        <View style={styles.topBar}>
+          <Pressable onPress={dismiss} hitSlop={12} style={styles.closeBtn}>
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </Pressable>
+          <View style={styles.liveBadge}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>ALARM ACTIVE</Text>
+          </View>
+          <View style={{ width: 36 }} />
+        </View>
+
         <View style={styles.center}>
           <LinearGradient
             colors={gradients.primary}
@@ -55,7 +82,11 @@ export default function AlarmScreen() {
             <Ionicons name="alarm" size={54} color="#fff" />
           </LinearGradient>
 
-          <Text style={styles.time}>{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text>
+          <Text style={styles.time}>{now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text>
+          <Text style={styles.dateSub}>
+            {now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
+          </Text>
+
           <Text style={styles.title}>{briefing?.anchorTask?.title || 'Mindful Wakeup'}</Text>
           <Text style={styles.script}>{briefing?.text || 'Preparing your peaceful briefing…'}</Text>
 
@@ -90,9 +121,48 @@ export default function AlarmScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
+  },
+  liveText: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
   ring: { width: 110, height: 110, borderRadius: 55, alignItems: 'center', justifyContent: 'center' },
-  time: { color: colors.text, fontSize: 52, fontWeight: '200', marginTop: 24 },
+  time: { color: colors.text, fontSize: 52, fontWeight: '200', marginTop: 18 },
+  dateSub: { color: colors.muted, fontSize: 14, fontWeight: '600', marginTop: 2, marginBottom: 4 },
   title: { color: colors.text, fontSize: 24, fontWeight: '800', textAlign: 'center', marginTop: 8 },
   script: { color: colors.textSecondary, textAlign: 'center', marginTop: 14, lineHeight: 22, fontSize: 15 },
   replay: {

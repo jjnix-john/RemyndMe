@@ -5,17 +5,17 @@
   "main": "index.js",
   "scripts": {
     "start": "npx expo start --go",
-    "expo": "npx expo start --go",
+    "start:expo": "npx expo start --go",
     "expo:tunnel": "npx expo start --go --tunnel",
     "expo:dev": "npx expo start --dev-client",
     "server": "node server.js",
-    "start:all": "concurrently -k -n server,expo -c cyan,magenta \"npm:server\" \"npm:expo\"",
+    "start:all": "concurrently -k -n server,expo -c cyan,magenta \"npm:server\" \"npm run start\"",
     "android": "npx expo run:android",
     "ios": "npx expo run:ios",
     "prebuild": "npx expo prebuild"
   },
   "dependencies": {
-    "@expo/vector-icons": "^14.0.4",
+    "@expo/vector-icons": "~14.0.4",
     "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/datetimepicker": "8.2.0",

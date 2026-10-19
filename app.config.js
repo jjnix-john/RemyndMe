@@ -49,10 +49,10 @@ module.exports = {
     },
     plugins,
     extra: {
-      supabaseUrl: process.env.SUPABASE_URL || null,
-      supabaseAnonKey: process.env.SUPABASE_ANON_KEY || null,
-      apiUrl: process.env.API_URL || null,
-      apiPort: process.env.PORT || '4000',
+      supabaseUrl: typeof process.env.SUPABASE_URL === 'string' ? process.env.SUPABASE_URL.trim() : '',
+      supabaseAnonKey: typeof process.env.SUPABASE_ANON_KEY === 'string' ? process.env.SUPABASE_ANON_KEY.trim() : '',
+      apiUrl: typeof process.env.API_URL === 'string' ? process.env.API_URL.trim() : '',
+      apiPort: String(process.env.PORT || '4000'),
     },
   },
 };

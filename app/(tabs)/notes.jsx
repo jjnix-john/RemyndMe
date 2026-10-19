@@ -175,7 +175,28 @@ export default function NotesScreen() {
               <View style={styles.cardTag}>
                 <Text style={styles.cardTagText}>🌱 Note</Text>
               </View>
-              <Text style={styles.cardDate}>{fmt(item.created_at)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={styles.cardDate}>{fmt(item.created_at)}</Text>
+                <Pressable
+                  onPress={() =>
+                    Alert.alert('Delete note?', 'Are you sure you want to remove this note?', [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: async () => {
+                          await db.removeNote(item.id);
+                          syncAll();
+                        },
+                      },
+                    ])
+                  }
+                  hitSlop={8}
+                  style={{ padding: 2 }}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.subtle} />
+                </Pressable>
+              </View>
             </View>
           </Pressable>
         )}
@@ -258,6 +279,9 @@ function NoteEditor({ note, onClose, onDelete }) {
   const rec = useRecorder();
   const current = { ...note, title, content };
 
+  const words = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const chars = content.length;
+
   async function toggleMic() {
     if (rec.isRecording) {
       const text = await rec.stop();
@@ -277,6 +301,7 @@ function NoteEditor({ note, onClose, onDelete }) {
                 <Ionicons name="chevron-down" size={24} color={colors.text} />
               </View>
             </Pressable>
+
             <View style={styles.editorStatusPill}>
               <Text style={styles.editorStatus}>
                 {rec.isTranscribing
@@ -285,25 +310,28 @@ function NoteEditor({ note, onClose, onDelete }) {
                   ? `● Listening ${rec.seconds}s`
                   : note.isNew
                   ? '🌿 Fresh Note'
-                  : '🌿 Editing Note'}
+                  : '🌿 Note'}
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
               {!note.isNew && (
                 <Pressable
                   onPress={() =>
                     Alert.alert('Delete note?', 'This will permanently remove this note.', [
-                      { text: 'Cancel' },
+                      { text: 'Cancel', style: 'cancel' },
                       { text: 'Delete', style: 'destructive', onPress: () => onDelete(note.id) },
                     ])
                   }
+                  hitSlop={8}
                 >
                   <View style={[styles.iconCircle, { borderColor: '#FEE2E2' }]}>
-                    <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
                   </View>
                 </Pressable>
               )}
-              <Pressable onPress={toggleMic} disabled={rec.isTranscribing} testID="editor-mic">
+
+              <Pressable onPress={toggleMic} disabled={rec.isTranscribing} testID="editor-mic" hitSlop={8}>
                 <View
                   style={[
                     styles.iconCircle,
@@ -315,11 +343,27 @@ function NoteEditor({ note, onClose, onDelete }) {
                   ) : (
                     <Ionicons
                       name={rec.isRecording ? 'stop-circle' : 'mic'}
-                      size={22}
+                      size={20}
                       color={rec.isRecording ? colors.danger : colors.primaryDark}
                     />
                   )}
                 </View>
+              </Pressable>
+
+              <Pressable
+                onPress={() => onClose(current)}
+                testID="editor-save"
+                style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+              >
+                <LinearGradient
+                  colors={gradients.primary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.savePill}
+                >
+                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                  <Text style={styles.savePillText}>Save</Text>
+                </LinearGradient>
               </Pressable>
             </View>
           </View>
@@ -341,6 +385,12 @@ function NoteEditor({ note, onClose, onDelete }) {
             onChangeText={setContent}
             autoFocus={note.isNew}
           />
+
+          <View style={styles.statsBar}>
+            <Text style={styles.statsText}>
+              {words} {words === 1 ? 'word' : 'words'} · {chars} chars
+            </Text>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
@@ -536,5 +586,31 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     paddingHorizontal: 22,
     paddingTop: 8,
+  },
+  savePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radius.full,
+    ...shadows.card,
+  },
+  savePillText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  statsBar: {
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    backgroundColor: '#FFFFFF',
+  },
+  statsText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

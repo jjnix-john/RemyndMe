@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useAuth } from '../../lib/auth';
 import * as db from '../../lib/db';
 import { getAlarmStatus, openBatterySettings, requestAlarmPermissions } from '../../lib/alarms';
 import { speakBriefing, stopSpeaking } from '../../lib/briefing';
 import { colors, gradients, priorityColor, radius, shadows } from '../../lib/theme';
 
 export default function AlarmsScreen() {
+  const { user, isGuest, signOut } = useAuth();
+  const router = useRouter();
   const [tasks, setTasks] = useState([]);
   const [status, setStatus] = useState({ notifications: true, exactAlarm: true });
   const [speaking, setSpeaking] = useState(false);
@@ -37,16 +41,52 @@ export default function AlarmsScreen() {
     try { await speakBriefing(upcoming[0]?.id, { repeat: 1 }); } finally { setSpeaking(false); }
   }
 
+  function openRingScreen(taskId) {
+    router.push({ pathname: '/alarm', params: { taskId: taskId || upcoming[0]?.id || '' } });
+  }
+
   const ok = status.notifications && status.exactAlarm;
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 80 }}>
-        <View style={styles.titleRow}>
-          <Text style={styles.leafIcon}>⏰</Text>
-          <Text style={styles.h1}>Voice Alarms</Text>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+        {/* Header with Title and User Profile */}
+        <View style={styles.header}>
+          <View>
+            <View style={styles.titleRow}>
+              <Text style={styles.leafIcon}>⏰</Text>
+              <Text style={styles.h1}>Voice Alarms</Text>
+            </View>
+            <Text style={styles.subtle}>Gentle exact alarms · voice briefings that wake you peacefully</Text>
+          </View>
+
+          <View style={styles.headerRight}>
+            {isGuest && (
+              <View style={styles.guestBadge}>
+                <Text style={styles.guestText}>🌿 Guest</Text>
+              </View>
+            )}
+            <Pressable
+              onPress={() =>
+                Alert.alert(
+                  isGuest ? 'Guest Preview Mode' : 'Account Details',
+                  isGuest
+                    ? 'You are running in breezy demo mode. Alarms and briefing audio work right in your session.'
+                    : `Signed in as ${user?.email}`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: isGuest ? 'Exit Demo' : 'Sign out', style: 'destructive', onPress: signOut },
+                  ]
+                )
+              }
+              hitSlop={10}
+            >
+              <View style={styles.avatar}>
+                <Ionicons name="leaf-outline" size={20} color={colors.primaryDark} />
+              </View>
+            </Pressable>
+          </View>
         </View>
-        <Text style={styles.subtle}>Gentle exact alarms · voice briefings that wake you peacefully</Text>
 
         {/* Status card */}
         <View style={[styles.statusCard, shadows.card, { borderColor: ok ? colors.primary : '#FCA5A5' }]}>
@@ -70,18 +110,45 @@ export default function AlarmsScreen() {
           )}
         </View>
 
-        {/* Test voice briefing button */}
-        <Pressable onPress={testBriefing} testID="test-briefing" style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}>
-          <LinearGradient
-            colors={speaking ? gradients.alarm : gradients.primary}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.testBtn, shadows.floating]}
+        {/* Quick Alarm Ring UI Demonstration Button */}
+        <View style={styles.demoButtonsRow}>
+          <Pressable
+            onPress={() => openRingScreen()}
+            style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.9 : 1 }]}
           >
-            <Ionicons name={speaking ? 'stop' : 'volume-high'} size={22} color="#fff" />
-            <Text style={styles.testText}>{speaking ? 'Stop Voice Briefing' : 'Preview Voice Briefing'}</Text>
-          </LinearGradient>
-        </Pressable>
+            <LinearGradient
+              colors={gradients.primary}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.testBtn, shadows.floating]}
+            >
+              <Ionicons name="play" size={18} color="#fff" />
+              <Text style={styles.testText}>Test Ring UI</Text>
+            </LinearGradient>
+          </Pressable>
+
+          <Pressable
+            onPress={testBriefing}
+            testID="test-briefing"
+            style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.9 : 1 }]}
+          >
+            <LinearGradient
+              colors={speaking ? gradients.alarm : ['#FFFFFF', '#F0FDF4']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.testBtn, styles.testBtnOutline, shadows.card]}
+            >
+              <Ionicons
+                name={speaking ? 'stop' : 'volume-high'}
+                size={18}
+                color={speaking ? '#fff' : colors.primaryDark}
+              />
+              <Text style={[styles.testText, { color: speaking ? '#fff' : colors.primaryDark }]}>
+                {speaking ? 'Stop Voice' : 'Hear Briefing'}
+              </Text>
+            </LinearGradient>
+          </Pressable>
+        </View>
 
         {/* Reliability tip */}
         <Pressable onPress={openBatterySettings} style={[styles.tip, shadows.card]}>
@@ -95,13 +162,17 @@ export default function AlarmsScreen() {
         {upcoming.length === 0 && (
           <View style={styles.emptyCard}>
             <Ionicons name="calendar-outline" size={32} color={colors.subtle} />
-            <Text style={styles.empty}>No upcoming alarms scheduled. Add a task with a future due time.</Text>
+            <Text style={styles.empty}>No upcoming alarms scheduled. Add a task with a future due time in Tasks.</Text>
           </View>
         )}
         {upcoming.map((t) => {
           const d = new Date(t.due_date);
           return (
-            <View key={t.id} style={[styles.item, shadows.card]}>
+            <Pressable
+              key={t.id}
+              style={[styles.item, shadows.card]}
+              onPress={() => openRingScreen(t.id)}
+            >
               <View style={[styles.stripe, { backgroundColor: priorityColor(t.priority) }]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemTitle} numberOfLines={1}>{t.title}</Text>
@@ -109,10 +180,11 @@ export default function AlarmsScreen() {
                   {d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                 </Text>
               </View>
-              <View style={styles.alarmBadge}>
-                <Ionicons name="alarm" size={20} color={colors.primaryDark} />
+              <View style={styles.ringPreviewPill}>
+                <Ionicons name="play-circle" size={18} color={colors.primaryDark} />
+                <Text style={styles.ringPreviewText}>Ring</Text>
               </View>
-            </View>
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -122,10 +194,42 @@ export default function AlarmsScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.bg },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 4 },
   leafIcon: { fontSize: 26 },
   h1: { color: colors.text, fontSize: 30, fontWeight: '800', letterSpacing: -0.5 },
   subtle: { color: colors.muted, marginTop: 4, marginBottom: 18, fontSize: 13 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  guestBadge: {
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  guestText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700' },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card,
+  },
+  demoButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
   statusCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -150,12 +254,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    padding: 17,
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     borderRadius: radius.md,
-    marginTop: 16,
   },
-  testText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  testBtnOutline: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  testText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   tip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -193,12 +302,18 @@ const styles = StyleSheet.create({
   stripe: { width: 4, alignSelf: 'stretch', borderRadius: 2 },
   itemTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },
   itemTime: { color: colors.muted, marginTop: 4, fontSize: 13, fontWeight: '500' },
-  alarmBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.primarySoft,
+  ringPreviewPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+  },
+  ringPreviewText: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

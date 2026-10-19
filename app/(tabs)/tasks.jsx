@@ -21,6 +21,18 @@ const dayKey = (d) => { const x = new Date(d); return `${x.getFullYear()}-${pad(
 const timeStr = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const PRIORITIES = ['low', 'medium', 'high'];
 
+const relativeDay = (iso) => {
+  const d = new Date(iso);
+  const now = new Date();
+  const dKey = dayKey(d);
+  const nowKey = dayKey(now);
+  if (dKey === nowKey) return 'Today';
+  const tomorrow = new Date(now.getTime() + 86400000);
+  if (dKey === dayKey(tomorrow)) return 'Tomorrow';
+  if (d < now) return 'Overdue';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
 const calendarTheme = {
   calendarBackground: '#FFFFFF',
   backgroundColor: '#FFFFFF',
@@ -38,7 +50,7 @@ const calendarTheme = {
 };
 
 export default function TasksScreen() {
-  const { user } = useAuth();
+  const { user, isGuest, signOut } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [selected, setSelected] = useState(dayKey(new Date()));
   const [showAll, setShowAll] = useState(false);
@@ -71,6 +83,7 @@ export default function TasksScreen() {
       ...(m[selected] || {}),
       selected: true,
       selectedColor: colors.primary,
+      selectedDotColor: '#FFFFFF',
     };
     return m;
   }, [tasks, selected]);
@@ -111,7 +124,16 @@ export default function TasksScreen() {
   }
 
   const newTask = () => {
-    const due = new Date(Date.now() + 60 * 60 * 1000);
+    const now = new Date();
+    const [y, m, d] = selected.split('-').map(Number);
+    const due = new Date();
+    if (selected === dayKey(now)) {
+      due.setTime(now.getTime() + 60 * 60 * 1000);
+    } else {
+      due.setFullYear(y, m - 1, d);
+      due.setHours(9, 0, 0, 0);
+    }
+
     setEditing({
       id: Crypto.randomUUID(),
       user_id: user?.id || 'guest-explorer',
@@ -144,6 +166,10 @@ export default function TasksScreen() {
         await scheduleTaskAlarm(full);
       }
       setSmartText('');
+      if (created.length > 0 && created[0].due_date) {
+        setSelected(dayKey(created[0].due_date));
+        setShowAll(false);
+      }
       syncAll();
     } catch (e) {
       Alert.alert('Smart Task', e.message);
@@ -169,7 +195,7 @@ export default function TasksScreen() {
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
-      {/* Mindful Tasks Header */}
+      {/* Mindful Tasks Header with Profile & Today button */}
       <View style={styles.header}>
         <View>
           <View style={styles.titleRow}>
@@ -178,12 +204,44 @@ export default function TasksScreen() {
           </View>
           <Text style={styles.subtle}>Peaceful focus · voice alarm reminders</Text>
         </View>
-        <Pressable
-          onPress={() => setSelected(dayKey(new Date()))}
-          style={({ pressed }) => [styles.todayBtn, { opacity: pressed ? 0.8 : 1 }]}
-        >
-          <Text style={styles.todayText}>🌱 Today</Text>
-        </Pressable>
+
+        <View style={styles.headerRight}>
+          <Pressable
+            onPress={() => {
+              setSelected(dayKey(new Date()));
+              setShowAll(false);
+            }}
+            style={({ pressed }) => [styles.todayBtn, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <Text style={styles.todayText}>🌱 Today</Text>
+          </Pressable>
+
+          {isGuest && (
+            <View style={styles.guestBadge}>
+              <Text style={styles.guestText}>🌿 Guest</Text>
+            </View>
+          )}
+
+          <Pressable
+            onPress={() =>
+              Alert.alert(
+                isGuest ? 'Guest Preview Mode' : 'Account Details',
+                isGuest
+                  ? 'You are running in breezy demo mode. All tasks are saved safely in your local device cache.'
+                  : `Signed in as ${user?.email}`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: isGuest ? 'Exit Demo' : 'Sign out', style: 'destructive', onPress: signOut },
+                ]
+              )
+            }
+            hitSlop={10}
+          >
+            <View style={styles.avatar}>
+              <Ionicons name="leaf-outline" size={20} color={colors.primaryDark} />
+            </View>
+          </Pressable>
+        </View>
       </View>
 
       {/* Smart Natural Language Task Bar */}
@@ -222,7 +280,10 @@ export default function TasksScreen() {
       <View style={styles.calWrap}>
         <Calendar
           current={selected}
-          onDayPress={(d) => setSelected(d.dateString)}
+          onDayPress={(d) => {
+            setSelected(d.dateString);
+            setShowAll(false);
+          }}
           markingType="multi-dot"
           markedDates={marked}
           theme={calendarTheme}
@@ -263,93 +324,99 @@ export default function TasksScreen() {
             </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <Pressable
-            style={[styles.row, item.is_completed && styles.rowCompleted]}
-            onPress={() => setEditing(item)}
-          >
-            {/* Mindful Custom Checkbox */}
-            <Pressable onPress={() => toggleDone(item)} hitSlop={12} style={styles.checkWrap}>
-              <View
-                style={[
-                  styles.checkbox,
-                  item.is_completed && { backgroundColor: colors.primary, borderColor: colors.primary },
-                ]}
-              >
-                {item.is_completed && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
-              </View>
-            </Pressable>
-
-            {/* Task Info */}
-            <View style={styles.rowBody}>
-              <Text
-                style={[
-                  styles.rowTitle,
-                  item.is_completed && { textDecorationLine: 'line-through', color: colors.muted },
-                ]}
-                numberOfLines={2}
-              >
-                {item.title}
-              </Text>
-              <View style={styles.rowMeta}>
-                <Ionicons name="time-outline" size={14} color={colors.muted} />
-                <Text style={styles.rowTime}>{timeStr(item.due_date)}</Text>
+        renderItem={({ item }) => {
+          const rel = relativeDay(item.due_date);
+          const isOverdue = !item.is_completed && rel === 'Overdue';
+          return (
+            <Pressable
+              style={[styles.row, item.is_completed && styles.rowCompleted]}
+              onPress={() => setEditing(item)}
+            >
+              {/* Mindful Custom Checkbox */}
+              <Pressable onPress={() => toggleDone(item)} hitSlop={12} style={styles.checkWrap}>
                 <View
                   style={[
-                    styles.badge,
-                    {
-                      backgroundColor:
-                        item.priority === 'high'
-                          ? '#FEE2E2'
-                          : item.priority === 'low'
-                          ? '#D1FAE5'
-                          : '#FEF3C7',
-                    },
+                    styles.checkbox,
+                    item.is_completed && { backgroundColor: colors.primary, borderColor: colors.primary },
                   ]}
                 >
-                  <Text
+                  {item.is_completed && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                </View>
+              </Pressable>
+
+              {/* Task Info */}
+              <View style={styles.rowBody}>
+                <Text
+                  style={[
+                    styles.rowTitle,
+                    item.is_completed && { textDecorationLine: 'line-through', color: colors.muted },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {item.title}
+                </Text>
+                <View style={styles.rowMeta}>
+                  <Ionicons name="time-outline" size={14} color={isOverdue ? colors.danger : colors.muted} />
+                  <Text style={[styles.rowTime, isOverdue && { color: colors.danger, fontWeight: '700' }]}>
+                    {timeStr(item.due_date)} · {rel}
+                  </Text>
+                  <View
                     style={[
-                      styles.badgeText,
+                      styles.badge,
                       {
-                        color:
+                        backgroundColor:
                           item.priority === 'high'
-                            ? colors.danger
+                            ? '#FEE2E2'
                             : item.priority === 'low'
-                            ? colors.primaryDark
-                            : '#D97706',
+                            ? '#D1FAE5'
+                            : '#FEF3C7',
                       },
                     ]}
                   >
-                    {item.priority}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.badgeText,
+                        {
+                          color:
+                            item.priority === 'high'
+                              ? colors.danger
+                              : item.priority === 'low'
+                              ? colors.primaryDark
+                              : '#D97706',
+                        },
+                      ]}
+                    >
+                      {item.priority}
+                    </Text>
+                  </View>
                 </View>
               </View>
-            </View>
 
-            {/* Alarm bell toggle */}
-            <Pressable onPress={() => toggleAlarm(item)} hitSlop={10} style={{ padding: 4 }}>
-              <Ionicons
-                name={item.alarm_enabled ? 'alarm' : 'alarm-outline'}
-                size={22}
-                color={item.alarm_enabled ? colors.primaryDark : colors.subtle}
-              />
-            </Pressable>
+              {/* Alarm bell toggle */}
+              <Pressable onPress={() => toggleAlarm(item)} hitSlop={10} style={{ padding: 4 }}>
+                <Ionicons
+                  name={item.alarm_enabled ? 'alarm' : 'alarm-outline'}
+                  size={22}
+                  color={item.alarm_enabled ? colors.primaryDark : colors.subtle}
+                />
+              </Pressable>
 
-            {/* Delete button */}
-            <Pressable
-              onPress={() =>
-                Alert.alert('Delete task?', undefined, [
-                  { text: 'Cancel' },
-                  { text: 'Delete', style: 'destructive', onPress: () => remove(item) },
-                ])
-              }
-              hitSlop={10}
-              style={{ padding: 4 }}
-            >
-              <Ionicons name="trash-outline" size={18} color={colors.subtle} />
+              {/* Delete button */}
+              <Pressable
+                onPress={() =>
+                  Alert.alert('Delete task?', undefined, [
+                    { text: 'Cancel' },
+                    { text: 'Delete', style: 'destructive', onPress: () => remove(item) },
+                  ])
+                }
+                hitSlop={10}
+                style={{ padding: 4 }}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.subtle} />
+              </Pressable>
             </Pressable>
-          </Pressable>
-        )}
+          );
+        }}
       />
 
       {/* Floating Action Button */}
@@ -387,27 +454,63 @@ function TaskEditorSheet({ task, onSave, onCancel }) {
   const [priority, setPriority] = useState(task.priority || 'medium');
   const [alarm, setAlarm] = useState(task.alarm_enabled ?? true);
 
-  function pickAndroid() {
-    DateTimePickerAndroid.open({
-      value: due,
-      mode: 'date',
-      onChange: (e1, d) => {
-        if (e1.type !== 'set' || !d) return;
-        const base = new Date(d);
-        base.setHours(due.getHours(), due.getMinutes());
-        DateTimePickerAndroid.open({
-          value: base,
-          mode: 'time',
-          onChange: (e2, t) => {
-            if (e2.type === 'set' && t) setDue(t);
-          },
-        });
-      },
-    });
+  function applyPreset(type) {
+    const next = new Date();
+    if (type === '1h') {
+      next.setTime(Date.now() + 60 * 60 * 1000);
+    } else if (type === 'tonight') {
+      next.setHours(20, 0, 0, 0);
+      if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+    } else if (type === 'tomorrow9am') {
+      next.setDate(next.getDate() + 1);
+      next.setHours(9, 0, 0, 0);
+    } else if (type === 'in2d') {
+      next.setDate(next.getDate() + 2);
+      next.setHours(10, 0, 0, 0);
+    }
+    setDue(next);
+  }
+
+  function pickAndroidDate() {
+    if (Platform.OS !== 'android') return;
+    try {
+      DateTimePickerAndroid.open({
+        value: due,
+        mode: 'date',
+        onChange: (e, d) => {
+          if (e.type === 'set' && d) {
+            const next = new Date(d);
+            next.setHours(due.getHours(), due.getMinutes(), 0, 0);
+            setDue(next);
+          }
+        },
+      });
+    } catch (e) {
+      console.warn('DatePicker error:', e);
+    }
+  }
+
+  function pickAndroidTime() {
+    if (Platform.OS !== 'android') return;
+    try {
+      DateTimePickerAndroid.open({
+        value: due,
+        mode: 'time',
+        onChange: (e, t) => {
+          if (e.type === 'set' && t) {
+            const next = new Date(due);
+            next.setHours(t.getHours(), t.getMinutes(), 0, 0);
+            setDue(next);
+          }
+        },
+      });
+    } catch (e) {
+      console.warn('TimePicker error:', e);
+    }
   }
 
   function submit() {
-    if (!title.trim()) return Alert.alert('Add a title');
+    if (!title.trim()) return Alert.alert('Add a title', 'Please enter a title for your task.');
     onSave({ ...task, title: title.trim(), due_date: due.toISOString(), priority, alarm_enabled: alarm });
   }
 
@@ -428,32 +531,87 @@ function TaskEditorSheet({ task, onSave, onCancel }) {
             testID="task-title-input"
           />
 
+          {/* Quick Presets */}
+          <Text style={styles.label}>Quick Schedule Presets</Text>
+          <View style={styles.presetRow}>
+            <Pressable onPress={() => applyPreset('1h')} style={styles.presetChip}>
+              <Text style={styles.presetText}>+1 Hour</Text>
+            </Pressable>
+            <Pressable onPress={() => applyPreset('tonight')} style={styles.presetChip}>
+              <Text style={styles.presetText}>Tonight (8 PM)</Text>
+            </Pressable>
+            <Pressable onPress={() => applyPreset('tomorrow9am')} style={styles.presetChip}>
+              <Text style={styles.presetText}>Tomorrow (9 AM)</Text>
+            </Pressable>
+            <Pressable onPress={() => applyPreset('in2d')} style={styles.presetChip}>
+              <Text style={styles.presetText}>In 2 Days</Text>
+            </Pressable>
+          </View>
+
+          {/* Date & Time Selectors */}
           <Text style={styles.label}>Scheduled Due Time</Text>
           {Platform.OS === 'android' ? (
-            <Pressable style={styles.dateBtn} onPress={pickAndroid}>
-              <Ionicons name="calendar-outline" size={18} color={colors.primaryDark} />
-              <Text style={styles.dateText}>
-                {due.toLocaleString([], {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
-              </Text>
-            </Pressable>
+            <View style={styles.dateTimeRow}>
+              <Pressable style={styles.dateBtn} onPress={pickAndroidDate}>
+                <Ionicons name="calendar-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.dateText}>
+                  {due.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.dateBtn} onPress={pickAndroidTime}>
+                <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.dateText}>
+                  {due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                </Text>
+              </Pressable>
+            </View>
+          ) : Platform.OS === 'ios' ? (
+            <View style={styles.dateTimeRow}>
+              <DateTimePicker
+                value={due}
+                mode="date"
+                display="compact"
+                themeVariant="light"
+                onChange={(_, d) => {
+                  if (d) {
+                    const next = new Date(d);
+                    next.setHours(due.getHours(), due.getMinutes());
+                    setDue(next);
+                  }
+                }}
+              />
+              <DateTimePicker
+                value={due}
+                mode="time"
+                display="compact"
+                themeVariant="light"
+                onChange={(_, t) => {
+                  if (t) {
+                    const next = new Date(due);
+                    next.setHours(t.getHours(), t.getMinutes());
+                    setDue(next);
+                  }
+                }}
+              />
+            </View>
           ) : (
-            <DateTimePicker
-              value={due}
-              mode="datetime"
-              display="compact"
-              themeVariant="light"
-              onChange={(_, d) => d && setDue(d)}
-              style={{ alignSelf: 'flex-start' }}
-            />
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateBtn}>
+                <Ionicons name="calendar-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.dateText}>
+                  {due.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                </Text>
+              </View>
+              <View style={styles.dateBtn}>
+                <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.dateText}>
+                  {due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                </Text>
+              </View>
+            </View>
           )}
 
-          <Text style={styles.label}>Priority</Text>
+          <Text style={styles.label}>Priority Level</Text>
           <View style={styles.segment}>
             {PRIORITIES.map((p) => {
               const active = priority === p;
@@ -494,7 +652,7 @@ function TaskEditorSheet({ task, onSave, onCancel }) {
               value={alarm}
               onValueChange={setAlarm}
               trackColor={{ true: colors.primary, false: colors.borderLight }}
-              thumbColor={alarm ? '#FFFFFF' : '#FFFFFF'}
+              thumbColor="#FFFFFF"
             />
           </View>
 
@@ -533,9 +691,10 @@ const styles = StyleSheet.create({
   leafIcon: { fontSize: 24 },
   h1: { color: colors.text, fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
   subtle: { color: colors.muted, marginTop: 2, fontSize: 13, fontWeight: '500' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   todayBtn: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.full,
     borderWidth: 1,
@@ -543,6 +702,26 @@ const styles = StyleSheet.create({
     ...shadows.card,
   },
   todayText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
+  guestBadge: {
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  guestText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700' },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card,
+  },
   smart: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -668,21 +847,46 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
     textTransform: 'uppercase',
-    marginTop: 18,
+    marginTop: 16,
     marginBottom: 8,
     letterSpacing: 0.8,
   },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  presetChip: {
+    backgroundColor: colors.cardSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+  },
+  presetText: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
   dateBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: '#F8FCF9',
-    padding: 14,
+    padding: 13,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  dateText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  dateText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   segment: { flexDirection: 'row', gap: 10 },
   segItem: {
     flex: 1,
@@ -694,10 +898,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   segText: { color: colors.muted, fontWeight: '700', textTransform: 'capitalize' },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
+  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 },
   switchTitle: { color: colors.text, fontWeight: '700', fontSize: 15 },
   switchSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 24 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 22 },
   actionBtn: { paddingVertical: 16, paddingHorizontal: 22, borderRadius: radius.md, alignItems: 'center' },
   cancelBtn: { backgroundColor: '#F4F9F5', borderWidth: 1, borderColor: colors.border },
   cancelText: { color: colors.textSecondary, fontWeight: '700', fontSize: 16 },
