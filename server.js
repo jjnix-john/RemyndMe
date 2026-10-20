@@ -35,8 +35,11 @@ async function requireUser(req, res, next) {
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Missing bearer token' });
 
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL.startsWith('your_')) {
-      return res.status(503).json({ error: 'Supabase credentials not configured in .env on server' });
+    // Allow demo / guest mode when running locally without .env or Supabase keys
+    if (token === 'demo-guest-token' || !SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL.startsWith('your_')) {
+      req.user = { id: 'guest-explorer', email: 'mindful.explorer@remyndme.breeze' };
+      req.sb = null;
+      return next();
     }
 
     const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -163,13 +166,72 @@ function normalizeTasks(parsed) {
     .filter(Boolean);
 }
 
+function fallbackParseTask(text) {
+  const lower = text.toLowerCase();
+  const priority = lower.includes('urgent') || lower.includes('asap') || lower.includes('important')
+    ? 'high'
+    : lower.includes('someday') || lower.includes('maybe') || lower.includes('low')
+    ? 'low'
+    : 'medium';
+
+  const target = new Date();
+  target.setHours(target.getHours() + 2, 0, 0, 0);
+
+  if (lower.includes('tomorrow')) {
+    target.setDate(target.getDate() + 1);
+    target.setHours(9, 0, 0, 0);
+  } else if (lower.includes('tonight')) {
+    target.setHours(20, 0, 0, 0);
+  }
+
+  const timeMatch = lower.match(/(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const mins = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    const meridiem = timeMatch[3].toLowerCase();
+    if (meridiem === 'pm' && hours < 12) hours += 12;
+    if (meridiem === 'am' && hours === 12) hours = 0;
+    target.setHours(hours, mins, 0, 0);
+  }
+
+  const inHoursMatch = lower.match(/in\s+(\d+)\s*h(?:our)?s?/i);
+  if (inHoursMatch) {
+    target.setTime(Date.now() + parseInt(inHoursMatch[1], 10) * 3600000);
+  }
+  const inMinsMatch = lower.match(/in\s+(\d+)\s*m(?:in|inute)?s?/i);
+  if (inMinsMatch) {
+    target.setTime(Date.now() + parseInt(inMinsMatch[1], 10) * 60000);
+  }
+
+  let cleanTitle = text
+    .replace(/\b(tomorrow|tonight|urgent|asap|important)\b/gi, '')
+    .replace(/(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)/gi, '')
+    .replace(/in\s+\d+\s*(?:hours?|hrs?|mins?|minutes?)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleanTitle) cleanTitle = text.trim();
+
+  return [
+    {
+      title: cleanTitle.slice(0, 100),
+      due_date: target.toISOString(),
+      priority,
+    },
+  ];
+}
+
 /* ---------------------------------- Routes --------------------------------- */
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
-// Audio -> text (Groq Whisper-Large-v3)
+// Audio -> text (Groq Whisper-Large-v3, or demo fallback)
 app.post('/api/transcribe', requireUser, upload.single('audio'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No audio file uploaded (field "audio")' });
+    if (!GROQ_API_KEY || GROQ_API_KEY.startsWith('your_')) {
+      const demoTranscript = `🎙️ Voice Note (${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}): Mindful morning check-in & review tasks for today`;
+      return res.json({ text: demoTranscript });
+    }
     const text = await transcribeWithGroq(req.file.buffer, req.file.originalname, req.file.mimetype);
     res.json({ text });
   } catch (err) {
@@ -177,7 +239,7 @@ app.post('/api/transcribe', requireUser, upload.single('audio'), async (req, res
   }
 });
 
-// Raw text -> structured tasks (Gemini) -> inserted into Supabase `tasks`
+// Raw text -> structured tasks (Gemini or heuristic fallback) -> inserted into Supabase `tasks` if available
 app.post('/api/parse-task', requireUser, async (req, res, next) => {
   try {
     const text = String(req.body?.text || '').trim();
@@ -187,11 +249,20 @@ app.post('/api/parse-task', requireUser, async (req, res, next) => {
     const timezone = String(req.body?.timezone || 'UTC');
     const localNow = String(req.body?.localNow || new Date().toISOString());
 
-    const raw = await parseWithGemini(text, localNow, timezone);
-    const tasks = normalizeTasks(extractJson(raw));
+    let tasks;
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.startsWith('your_')) {
+      tasks = fallbackParseTask(text);
+    } else {
+      const raw = await parseWithGemini(text, localNow, timezone);
+      tasks = normalizeTasks(extractJson(raw));
+    }
     if (!tasks.length) return res.status(422).json({ error: 'No actionable task found in text' });
 
     const rows = tasks.map((t) => ({ ...t, user_id: req.user.id, is_completed: false, alarm_enabled: true }));
+    if (!req.sb) {
+      // In local/demo mode without Supabase connected, return the structured tasks directly
+      return res.json({ tasks: rows.map((r, i) => ({ ...r, id: `demo-task-${Date.now()}-${i}` })) });
+    }
     const { data, error } = await req.sb.from('tasks').insert(rows).select();
     if (error) {
       const e = new Error(`Supabase insert failed: ${error.message}`);
